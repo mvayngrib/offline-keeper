@@ -50,27 +50,45 @@ Keeper.prototype.getAll = function () {
 Keeper.prototype.put =
 Keeper.prototype.putOne = function (key, value) {
   var self = this
-  if (typeof value !== 'undefined') {
-    return this._validate(key, value)
-      .then(put)
-  } else {
-    return Q.ninvoke(utils, 'getInfoHash', value)
-      .then(function (infoHash) {
-        key = infoHash
-        return put()
-      })
-  }
-
-  function put () {
-    return self._doPut(key, value)
-  }
+  return this._normalizeKeyValue(key, value)
+    .then(function (obj) {
+      key = obj.key
+      value = obj.value
+      return self._validate(key, value)
+    })
+    .then(function () {
+      return self._doPut(key, value)
+    })
 }
 
-Keeper.prototype._validate = function (key, val) {
-  return Q.ninvoke(utils, 'getInfoHash', val)
+Keeper.prototype._validate = function (key, value) {
+  try {
+    typeforce('String', key)
+    typeforce('Buffer', value)
+  } catch (err) {
+    return Q.reject(err)
+  }
+
+  return getInfoHash(value)
     .then(function (infoHash) {
       if (key !== infoHash) {
         throw new Error('Key must be the infohash of the value, in this case: ' + infoHash)
+      }
+    })
+}
+
+Keeper.prototype._normalizeKeyValue = function (key, val) {
+  if (typeof val === 'undefined') {
+    val = key
+    key = null
+  }
+
+  var getKey = key == null ? getInfoHash(val) : Q.resolve(key)
+  return getKey
+    .then(function (key) {
+      return {
+        key: key,
+        value: val
       }
     })
 }
@@ -166,4 +184,8 @@ function getFilesRecursive (dir) {
   })
 
   return deferred.promise
+}
+
+function getInfoHash (val) {
+  return Q.ninvoke(utils, 'getInfoHash', val)
 }

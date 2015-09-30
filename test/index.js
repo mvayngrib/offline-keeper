@@ -47,7 +47,8 @@ test('put, get', function (t) {
       t.deepEqual(v0, v[0])
     })
     .then(function () {
-      return keeper.putOne(k[1], v[1])
+      // keeper should derive key
+      return keeper.putOne(v[1])
     })
     .then(function () {
       return keeper.getMany(k)
