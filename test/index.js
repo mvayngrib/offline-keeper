@@ -8,6 +8,23 @@ var testDir = path.resolve('./tmp')
 
 rimraf.sync(testDir)
 
+test('test invalid keys', function (t) {
+  t.plan(1)
+
+  var keeper = new Keeper({
+    storage: testDir
+  })
+
+  keeper.put('a', new Buffer('b'))
+    .then(function () {
+      t.fail()
+    })
+    .catch(function (err) {
+      t.pass()
+    })
+    .done()
+})
+
 test('put, get', function (t) {
   t.plan(2)
 
@@ -15,11 +32,16 @@ test('put, get', function (t) {
     storage: testDir
   })
 
-  var k = ['a', 'b']
+  var k = [
+    // infoHashes of values
+    '64fe16cc8a0c61c06bc403e02f515ce5614a35f1',
+    '0a745fb75a7818acf09f27de1db7a76081d22776'
+  ]
+
   var v = ['1', '2'].map(Buffer)
   keeper.putOne(k[0], v[0])
     .then(function () {
-      return keeper.getOne('a')
+      return keeper.getOne(k[0])
     })
     .then(function (v0) {
       t.deepEqual(v0, v[0])

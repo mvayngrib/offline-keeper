@@ -12,6 +12,7 @@ var writeFile = Q.nfbind(fs.writeFile)
 var unlink = Q.nfbind(fs.unlink)
 var bindAll = require('bindall')
 var debug = require('debug')('fsKeeper')
+var utils = require('tradle-utils')
 
 module.exports = Keeper
 
@@ -46,7 +47,35 @@ Keeper.prototype.getAll = function () {
     })
 }
 
+Keeper.prototype.put =
 Keeper.prototype.putOne = function (key, value) {
+  var self = this
+  if (typeof value !== 'undefined') {
+    return this._validate(key, value)
+      .then(put)
+  } else {
+    return Q.ninvoke(utils, 'getInfoHash', value)
+      .then(function (infoHash) {
+        key = infoHash
+        return put()
+      })
+  }
+
+  function put () {
+    return self._doPut(key, value)
+  }
+}
+
+Keeper.prototype._validate = function (key, val) {
+  return Q.ninvoke(utils, 'getInfoHash', val)
+    .then(function (infoHash) {
+      if (key !== infoHash) {
+        throw new Error('Key must be the infohash of the value, in this case: ' + infoHash)
+      }
+    })
+}
+
+Keeper.prototype._doPut = function (key, value) {
   var self = this
 
   if (this._closed) return Q.reject('Keeper is closed')
