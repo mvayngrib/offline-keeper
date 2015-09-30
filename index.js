@@ -11,13 +11,13 @@ var readFile = Q.nfbind(fs.readFile)
 var writeFile = Q.nfbind(fs.writeFile)
 var unlink = Q.nfbind(fs.unlink)
 var bindAll = require('bindall')
-var debug = require('debug')('fsStorage')
+var debug = require('debug')('fsKeeper')
 
-module.exports = Storage
+module.exports = Keeper
 
-function Storage (options) {
+function Keeper (options) {
   typeforce({
-    path: 'String'
+    storage: 'String'
   }, options)
 
   this._path = options.path
@@ -25,11 +25,11 @@ function Storage (options) {
   bindAll(this, 'getOne')
 }
 
-Storage.prototype.getOne = function (key) {
+Keeper.prototype.getOne = function (key) {
   return readFile(this._getAbsPathForKey(key))
 }
 
-Storage.prototype.getMany = function (keys) {
+Keeper.prototype.getMany = function (keys) {
   var self = this
   return Q.allSettled(keys.map(this.getOne))
     .then(function (results) {
@@ -39,22 +39,22 @@ Storage.prototype.getMany = function (keys) {
     })
 }
 
-Storage.prototype.getAll = function () {
+Keeper.prototype.getAll = function () {
   return getFilesRecursive(this._path)
     .then(function (files) {
       return Q.all(files.map(readFile))
     })
 }
 
-Storage.prototype.putOne = function (key, value) {
+Keeper.prototype.putOne = function (key, value) {
   var self = this
 
-  if (this._closed) return Q.reject('storage is closed')
+  if (this._closed) return Q.reject('Keeper is closed')
 
   var promise = this._exists(key)
     .then(function (exists) {
       if (exists) {
-        throw new Error('value for this key already exists in storage')
+        throw new Error('value for this key already exists in Keeper')
       }
 
       return self._save(key, value)
@@ -68,35 +68,35 @@ Storage.prototype.putOne = function (key, value) {
   return promise
 }
 
-Storage.prototype.removeOne = function (key) {
+Keeper.prototype.removeOne = function (key) {
   return unlink(this._getAbsPathForKey(key))
 }
 
-Storage.prototype.removeMany = function (keys) {
+Keeper.prototype.removeMany = function (keys) {
   return unlink(this._getAbsPathForKey(key))
 }
 
-Storage.prototype.clear = function () {
+Keeper.prototype.clear = function () {
   return rimraf(this._path)
 }
 
-Storage.prototype.close = function () {
+Keeper.prototype.close = function () {
   this._closed = true
   return Q.allSettled([this._pending])
 }
 
-Storage.prototype._exists = function (key) {
+Keeper.prototype._exists = function (key) {
   var filePath = this._getAbsPathForKey(key)
   return Q.Promise(function (resolve) {
     fs.exists(filePath, resolve)
   })
 }
 
-Storage.prototype._getAbsPathForKey = function (key) {
+Keeper.prototype._getAbsPathForKey = function (key) {
   return path.join(this._path, key.slice(0, 2), key.slice(2))
 }
 
-Storage.prototype._save = function (key, val) {
+Keeper.prototype._save = function (key, val) {
   var filePath = this._getAbsPathForKey(key)
   var dir = path.dirname(filePath)
   var exists

@@ -12,7 +12,7 @@ test('put, get', function (t) {
   t.plan(2)
 
   var keeper = new Keeper({
-    path: testDir
+    storage: testDir
   })
 
   var k = ['a', 'b']
