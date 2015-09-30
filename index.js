@@ -20,7 +20,7 @@ function Keeper (options) {
     storage: 'String'
   }, options)
 
-  this._path = options.path
+  this._path = options.storage
   this._pending = []
   bindAll(this, 'getOne')
 }
