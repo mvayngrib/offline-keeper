@@ -26,8 +26,6 @@ test('test invalid keys', function (t) {
 })
 
 test('put, get', function (t) {
-  t.plan(2)
-
   var keeper = new Keeper({
     storage: testDir
   })
@@ -56,7 +54,28 @@ test('put, get', function (t) {
     })
     .then(function (vals) {
       t.deepEqual(vals, v)
-      rimraf.sync(testDir)
     })
-    .done()
+    .then(function () {
+      return keeper.getAllKeys()
+    })
+    .then(function (keys) {
+      t.deepEqual(keys.sort(), k.slice().sort())
+      return keeper.getAllValues()
+    })
+    .then(function (vals) {
+      t.deepEqual(vals.sort(), v.slice().sort())
+      return keeper.getAll()
+    })
+    .then(function (map) {
+      t.deepEqual(Object.keys(map).sort(), k.slice().sort())
+      var vals = Object.keys(map).map(function (key) {
+        return map[key]
+      })
+
+      t.deepEqual(vals.sort(), v.slice().sort())
+    })
+    .done(function () {
+      rimraf.sync(testDir)
+      t.end()
+    })
 })

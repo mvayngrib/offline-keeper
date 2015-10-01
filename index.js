@@ -12,6 +12,7 @@ var writeFile = Q.nfbind(fs.writeFile)
 var unlink = Q.nfbind(fs.unlink)
 var debug = require('debug')('offline-keeper')
 var utils = require('tradle-utils')
+var bindAll = require('bindall')
 
 module.exports = Keeper
 
@@ -22,6 +23,7 @@ function Keeper (options) {
 
   this._path = options.storage
   this._pending = []
+  bindAll(this, 'getOne', 'getMany')
 }
 
 Keeper.prototype.get = function (keys) {
@@ -42,6 +44,37 @@ Keeper.prototype.getAll = function () {
   return getFilesRecursive(this._path)
     .then(function (files) {
       return Q.all(files.map(readFile))
+    })
+}
+
+Keeper.prototype.getAllKeys = function () {
+  var self = this
+  return getFilesRecursive(this._path)
+    .then(function (files) {
+      return files.map(self._getKeyForPath, self)
+    })
+}
+
+Keeper.prototype.getAllValues = function (files) {
+  return this.getAllKeys()
+    .then(this.getMany)
+}
+
+Keeper.prototype.getAll = function (files) {
+  var self = this
+  var keys
+  return this.getAllKeys()
+    .then(function (_keys) {
+      keys = _keys
+      return self.getMany(keys)
+    })
+    .then(function (values) {
+      var map = {}
+      for (var i = 0; i < keys.length; i++) {
+        map[keys[i]] = values[i]
+      }
+
+      return map
     })
 }
 
@@ -159,6 +192,13 @@ Keeper.prototype._exists = function (key) {
 
 Keeper.prototype._getAbsPathForKey = function (key) {
   return path.join(this._path, key.slice(0, 2), key.slice(2))
+}
+
+Keeper.prototype._getKeyForPath = function (filePath) {
+  var parts = filePath.split('/')
+  var file = parts.pop()
+  var dir = parts.pop()
+  return dir + file
 }
 
 Keeper.prototype._save = function (key, val) {
