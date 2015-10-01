@@ -35,10 +35,11 @@ test('put, get', function (t) {
   var k = [
     // infoHashes of values
     '64fe16cc8a0c61c06bc403e02f515ce5614a35f1',
-    '0a745fb75a7818acf09f27de1db7a76081d22776'
+    '0a745fb75a7818acf09f27de1db7a76081d22776',
+    'bd45a097c00e557ea871233ea21d27a47f8f21a9'
   ]
 
-  var v = ['1', '2'].map(Buffer)
+  var v = ['1', '2', '3'].map(Buffer)
   keeper.putOne(k[0], v[0])
     .then(function () {
       return keeper.getOne(k[0])
@@ -48,16 +49,14 @@ test('put, get', function (t) {
     })
     .then(function () {
       // keeper should derive key
-      return keeper.putOne(v[1])
+      return keeper.putMany(v.slice(1))
     })
     .then(function () {
       return keeper.getMany(k)
     })
     .then(function (vals) {
       t.deepEqual(vals, v)
-    })
-    .then(function () {
-      return Q.nfapply(rimraf, [testDir])
+      rimraf.sync(testDir)
     })
     .done()
 })

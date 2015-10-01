@@ -10,8 +10,7 @@ var path = require('path')
 var readFile = Q.nfbind(fs.readFile)
 var writeFile = Q.nfbind(fs.writeFile)
 var unlink = Q.nfbind(fs.unlink)
-var bindAll = require('bindall')
-var debug = require('debug')('fsKeeper')
+var debug = require('debug')('offline-keeper')
 var utils = require('tradle-utils')
 
 module.exports = Keeper
@@ -23,7 +22,11 @@ function Keeper (options) {
 
   this._path = options.storage
   this._pending = []
-  bindAll(this, 'getOne')
+}
+
+Keeper.prototype.get = function (keys) {
+  if (Array.isArray(keys)) return this.getMany(keys)
+  else return this.getOne(keys)
 }
 
 Keeper.prototype.getOne = function (key) {
@@ -31,13 +34,8 @@ Keeper.prototype.getOne = function (key) {
 }
 
 Keeper.prototype.getMany = function (keys) {
-  var self = this
-  return Q.allSettled(keys.map(this.getOne))
-    .then(function (results) {
-      return results.map(function (r) {
-        return r.value
-      })
-    })
+  return Q.allSettled(keys.map(this.getOne, this))
+    .then(pluckValue)
 }
 
 Keeper.prototype.getAll = function () {
@@ -47,18 +45,40 @@ Keeper.prototype.getAll = function () {
     })
 }
 
-Keeper.prototype.put =
-Keeper.prototype.putOne = function (key, value) {
+Keeper.prototype.put = function (arr) {
+  if (Array.isArray(arr)) return this.putMany(arr)
+  else return this.putOne.apply(this, arguments)
+}
+
+Keeper.prototype.putOne = function (options) {
   var self = this
-  return this._normalizeKeyValue(key, value)
-    .then(function (obj) {
-      key = obj.key
-      value = obj.value
-      return self._validate(key, value)
+  if (typeof options === 'string') {
+    options = {
+      key: arguments[0],
+      value: arguments[1]
+    }
+  } else if (Buffer.isBuffer(options)) {
+    options = {
+      value: arguments[0]
+    }
+  }
+
+  var key
+  var val
+  return this._normalizeOptions(options)
+    .then(function (norm) {
+      key = norm.key
+      val = norm.value
+      return self._validate(key, val)
     })
     .then(function () {
-      return self._doPut(key, value)
+      return self._doPut(key, val)
     })
+}
+
+Keeper.prototype.putMany = function (arr) {
+  return Q.allSettled(arr.map(this.putOne, this))
+    .then(pluckValue)
 }
 
 Keeper.prototype._validate = function (key, value) {
@@ -66,30 +86,28 @@ Keeper.prototype._validate = function (key, value) {
     typeforce('String', key)
     typeforce('Buffer', value)
   } catch (err) {
+    debug('invalid options')
     return Q.reject(err)
   }
 
   return getInfoHash(value)
     .then(function (infoHash) {
       if (key !== infoHash) {
+        debug('invalid key')
         throw new Error('Key must be the infohash of the value, in this case: ' + infoHash)
       }
     })
 }
 
-Keeper.prototype._normalizeKeyValue = function (key, val) {
-  if (typeof val === 'undefined') {
-    val = key
-    key = null
-  }
+Keeper.prototype._normalizeOptions = function (options) {
+  var getKey = options.key == null ?
+    getInfoHash(options.value) :
+    Q.resolve(options.key)
 
-  var getKey = key == null ? getInfoHash(val) : Q.resolve(key)
   return getKey
     .then(function (key) {
-      return {
-        key: key,
-        value: val
-      }
+      options.key = key
+      return options
     })
 }
 
@@ -188,4 +206,10 @@ function getFilesRecursive (dir) {
 
 function getInfoHash (val) {
   return Q.ninvoke(utils, 'getInfoHash', val)
+}
+
+function pluckValue (results) {
+  return results.map(function (r) {
+    return r.value
+  })
 }
