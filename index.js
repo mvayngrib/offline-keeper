@@ -183,6 +183,11 @@ Keeper.prototype.close = function () {
   return Q.allSettled([this._pending])
 }
 
+Keeper.prototype.destroy =
+Keeper.prototype.close = function () {
+  return Q.resolve()
+}
+
 Keeper.prototype._exists = function (key) {
   var filePath = this._getAbsPathForKey(key)
   return Q.Promise(function (resolve) {
