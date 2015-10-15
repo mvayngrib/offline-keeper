@@ -152,14 +152,15 @@ Keeper.prototype._doPut = function (key, value) {
   var promise = this._exists(key)
     .then(function (exists) {
       if (exists) {
+        debug('put aborted, value exists', key)
         throw new Error('value for this key already exists in Keeper')
       }
 
       return self._save(key, value)
     })
-    .finally(function (result) {
+    .finally(function () {
       self._pending.splice(self._pending.indexOf(promise), 1)
-      return result
+      debug('put finished', key)
     })
 
   this._pending.push(promise)
