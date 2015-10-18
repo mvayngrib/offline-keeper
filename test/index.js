@@ -25,6 +25,22 @@ test('test invalid keys', function (t) {
     .done()
 })
 
+test('put same data twice', function (t) {
+  t.plan(1)
+
+  var keeper = new Keeper({
+    storage: testDir
+  })
+
+  put()
+    .then(put)
+    .done(t.pass)
+
+  function put () {
+    return keeper.put('64fe16cc8a0c61c06bc403e02f515ce5614a35f1', new Buffer('1'))
+  }
+})
+
 test('put, get', function (t) {
   var keeper = new Keeper({
     storage: testDir

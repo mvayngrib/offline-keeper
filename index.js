@@ -153,7 +153,8 @@ Keeper.prototype._doPut = function (key, value) {
     .then(function (exists) {
       if (exists) {
         debug('put aborted, value exists', key)
-        throw new Error('value for this key already exists in Keeper')
+        return exists
+        // throw new Error('value for this key already exists in Keeper')
       }
 
       return self._save(key, value)
