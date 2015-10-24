@@ -1,5 +1,6 @@
 
 var path = require('path')
+var fs = require('fs')
 var rimraf = require('rimraf')
 var test = require('tape')
 var Q = require('q')
@@ -7,6 +8,34 @@ var Keeper = require('../')
 var testDir = path.resolve('./tmp')
 
 rimraf.sync(testDir)
+
+test('flat vs github dir structure', function (t) {
+  var flat = new Keeper({
+    storage: testDir,
+    flat: true
+  })
+
+  var github = new Keeper({
+    storage: testDir,
+  })
+
+  var key = '64fe16cc8a0c61c06bc403e02f515ce5614a35f1'
+  var a = flat.put(new Buffer('1'))
+    .then(function () {
+      fs.exists(path.join(testDir, key), t.ok)
+    })
+
+  var b = github.put(new Buffer('1'))
+    .then(function () {
+      fs.exists(path.join(testDir, key.slice(0, 2), key.slice(2)), t.ok)
+    })
+
+  Q.all([a, b])
+    .done(function () {
+      rimraf.sync(testDir)
+      t.end()
+    })
+})
 
 test('test invalid keys', function (t) {
   t.plan(1)

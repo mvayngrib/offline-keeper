@@ -18,9 +18,11 @@ module.exports = Keeper
 
 function Keeper (options) {
   typeforce({
+    flat: '?Boolean',
     storage: 'String'
   }, options)
 
+  this._flat = options.flat
   this._path = options.storage
   this._pending = []
   bindAll(this, 'getOne', 'getMany')
@@ -153,7 +155,7 @@ Keeper.prototype._doPut = function (key, value) {
     .then(function (exists) {
       if (exists) {
         debug('put aborted, value exists', key)
-        return exists
+        return true
         // throw new Error('value for this key already exists in Keeper')
       }
 
@@ -162,6 +164,7 @@ Keeper.prototype._doPut = function (key, value) {
     .finally(function () {
       self._pending.splice(self._pending.indexOf(promise), 1)
       debug('put finished', key)
+      return key
     })
 
   this._pending.push(promise)
@@ -198,14 +201,20 @@ Keeper.prototype._exists = function (key) {
 }
 
 Keeper.prototype._getAbsPathForKey = function (key) {
-  return path.join(this._path, key.slice(0, 2), key.slice(2))
+  if (this._flat) {
+    return path.join(this._path, key)
+  } else {
+    // git style
+    return path.join(this._path, key.slice(0, 2), key.slice(2))
+  }
 }
 
 Keeper.prototype._getKeyForPath = function (filePath) {
   var parts = filePath.split('/')
   var file = parts.pop()
-  var dir = parts.pop()
-  return dir + file
+  if (this._flat) return file
+
+  return parts.pop() + file
 }
 
 Keeper.prototype._save = function (key, val) {
