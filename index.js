@@ -220,17 +220,9 @@ Keeper.prototype._getKeyForPath = function (filePath) {
 Keeper.prototype._save = function (key, val) {
   var filePath = this._getAbsPathForKey(key)
   var dir = path.dirname(filePath)
-  var exists
-  return this._exists(key)
-    .then(function (_exists) {
-      exists = _exists
-      return Q.nfcall(mkdirp, dir)
-    })
+  return Q.nfcall(mkdirp, dir)
     .then(function () {
       return writeFile(filePath, val)
-    })
-    .then(function () {
-      return !exists
     })
 }
 
