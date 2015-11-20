@@ -24,7 +24,8 @@ function Keeper (options) {
 
   this._flat = options.flat
   this._path = options.storage
-  this._pending = []
+  this._pending = {}
+  this._done = {}
   bindAll(this, 'getOne', 'getMany')
 }
 
@@ -151,7 +152,10 @@ Keeper.prototype._doPut = function (key, value) {
 
   if (this._closed) return Q.reject('Keeper is closed')
 
-  var promise = this._exists(key)
+  if (this._done[key]) return Q(key)
+  if (this._pending[key]) return this._pending[key]
+
+  return this._pending[key] = this._exists(key)
     .then(function (exists) {
       if (exists) {
         debug('put aborted, value exists', key)
@@ -162,13 +166,11 @@ Keeper.prototype._doPut = function (key, value) {
       return self._save(key, value)
     })
     .finally(function () {
-      self._pending.splice(self._pending.indexOf(promise), 1)
+      delete self._pending[key]
+      self._done[key] = true
       debug('put finished', key)
       return key
     })
-
-  this._pending.push(promise)
-  return promise
 }
 
 Keeper.prototype.removeOne = function (key) {
@@ -185,7 +187,7 @@ Keeper.prototype.clear = function () {
 
 Keeper.prototype.close = function () {
   this._closed = true
-  return Q.allSettled([this._pending])
+  return Q.allSettled(getValues(this._pending))
 }
 
 Keeper.prototype.destroy =
@@ -260,4 +262,10 @@ function pluckValue (results) {
   return results.map(function (r) {
     return r.value
   })
+}
+
+function getValues (obj) {
+  var v = []
+  for (var p in obj) v.push(obj[p])
+  return v
 }
