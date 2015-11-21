@@ -11,7 +11,7 @@ var readFile = Q.nfbind(fs.readFile)
 var writeFile = Q.nfbind(fs.writeFile)
 var unlink = Q.nfbind(fs.unlink)
 var debug = require('debug')('offline-keeper')
-var utils = require('tradle-utils')
+var utils = require('@tradle/utils')
 var bindAll = require('bindall')
 
 module.exports = Keeper

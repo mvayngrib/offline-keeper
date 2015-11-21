@@ -10,12 +10,12 @@
   "license": "ISC",
   "dependencies": {
     "bindall": "^1.0.0",
-    "bitkeeper-client-js": "tradle/bitkeeper-client-js",
+    "@tradle/bitkeeper-client": "^0.0.1",
     "debug": "^2.2.0",
     "mkdirp": "^0.5.1",
     "q": "^1.4.1",
     "rimraf": "^2.4.3",
-    "tradle-utils": "^0.2.2",
+    "@tradle/utils": "^0.2.3",
     "typeforce": "^1.3.6",
     "walk": "^2.3.9"
   },
