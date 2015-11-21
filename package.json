@@ -1,5 +1,5 @@
 {
-  "name": "offline-keeper",
+  "name": "@tradle/offline-keeper",
   "version": "1.6.1",
   "description": "",
   "main": "index.js",
