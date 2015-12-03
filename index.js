@@ -1,32 +1,34 @@
 
-var fs = require('fs')
 var typeforce = require('typeforce')
 var Q = require('q')
-var fs = require('fs')
-var walk = require('walk')
-var rimraf = Q.nfbind(require('rimraf'))
-var mkdirp = require('mkdirp')
-var path = require('path')
-var readFile = Q.nfbind(fs.readFile)
-var writeFile = Q.nfbind(fs.writeFile)
-var unlink = Q.nfbind(fs.unlink)
+var extend = require('xtend')
 var debug = require('debug')('offline-keeper')
 var utils = require('@tradle/utils')
 var bindAll = require('bindall')
+var collect = require('stream-collector')
+collect = Q.nfcall.bind(Q, collect)
 
 module.exports = Keeper
 
 function Keeper (options) {
   typeforce({
-    flat: '?Boolean',
-    storage: 'String'
+    db: 'Object'
   }, options)
 
-  this._flat = options.flat
-  this._path = options.storage
+  this._db = options.db
   this._pending = {}
   this._done = {}
   bindAll(this, 'getOne', 'getMany')
+}
+
+Keeper.prototype._encodeKey = function (key) {
+  return key
+  // return this._prefix + key
+}
+
+Keeper.prototype._decodeKey = function (key) {
+  return key
+  // return key.slice(this._prefix.length)
 }
 
 Keeper.prototype.get = function (keys) {
@@ -35,7 +37,7 @@ Keeper.prototype.get = function (keys) {
 }
 
 Keeper.prototype.getOne = function (key) {
-  return readFile(this._getAbsPathForKey(key))
+  return Q.ninvoke(this._db, 'get', this._encodeKey(key))
 }
 
 Keeper.prototype.getMany = function (keys) {
@@ -43,39 +45,36 @@ Keeper.prototype.getMany = function (keys) {
     .then(pluckValue)
 }
 
+Keeper.prototype._createReadStream = function (opts) {
+  return this._db.createReadStream(extend({
+    start: this._prefix,
+    end: this._prefix + '\xff'
+  }, opts || {}))
+}
+
 Keeper.prototype.getAll = function () {
-  return getFilesRecursive(this._path)
-    .then(function (files) {
-      return Q.all(files.map(readFile))
-    })
+  return collect(this._createReadStream())
 }
 
 Keeper.prototype.getAllKeys = function () {
-  var self = this
-  return getFilesRecursive(this._path)
-    .then(function (files) {
-      return files.map(self._getKeyForPath, self)
-    })
+  return collect(this._createReadStream({
+    values: false
+  }))
 }
 
 Keeper.prototype.getAllValues = function (files) {
-  return this.getAllKeys()
-    .then(this.getMany)
+  return collect(this._createReadStream({
+    keys: false
+  }))
 }
 
-Keeper.prototype.getAll = function (files) {
-  var self = this
-  var keys
-  return this.getAllKeys()
-    .then(function (_keys) {
-      keys = _keys
-      return self.getMany(keys)
-    })
-    .then(function (values) {
+Keeper.prototype.getAll = function () {
+  return Q.nfcall(collect, this._createReadStream())
+    .then(function (data) {
       var map = {}
-      for (var i = 0; i < keys.length; i++) {
-        map[keys[i]] = values[i]
-      }
+      data.forEach(function (item) {
+        map[item.key] = item.value
+      })
 
       return map
     })
@@ -103,7 +102,7 @@ Keeper.prototype.putOne = function (options) {
   var val
   return this._normalizeOptions(options)
     .then(function (norm) {
-      key = norm.key
+      key = self._encodeKey(norm.key)
       val = norm.value
       return self._validate(key, val)
     })
@@ -150,7 +149,7 @@ Keeper.prototype._normalizeOptions = function (options) {
 Keeper.prototype._doPut = function (key, value) {
   var self = this
 
-  if (this._closed) return Q.reject('Keeper is closed')
+  if (this._closed) return Q.reject(new Error('Keeper is closed'))
 
   if (this._done[key]) return Q(key)
   if (this._pending[key]) return this._pending[key]
@@ -174,84 +173,46 @@ Keeper.prototype._doPut = function (key, value) {
 }
 
 Keeper.prototype.removeOne = function (key) {
-  return unlink(this._getAbsPathForKey(key))
+  return Q.ninvoke(this._db, 'del', this._encodeKey(key))
 }
 
 Keeper.prototype.removeMany = function (keys) {
-  return unlink(this._getAbsPathForKey(key))
+  var batch = keys.map(function (key) {
+    return {
+      type: 'del',
+      key: this._encodeKey(key)
+    }
+  }, this)
+
+  return Q.ninvoke(this._db, 'batch', batch)
 }
 
 Keeper.prototype.clear = function () {
-  return rimraf(this._path)
-}
-
-Keeper.prototype.close = function () {
-  this._closed = true
-  return Q.allSettled(getValues(this._pending))
+  return this.getAllKeys()
+    .then(this.removeMany)
 }
 
 Keeper.prototype.destroy =
 Keeper.prototype.close = function () {
-  return Q.resolve()
-}
-
-Keeper.prototype._exists = function (key) {
-  var filePath = this._getAbsPathForKey(key)
-  return Q.Promise(function (resolve) {
-    fs.exists(filePath, resolve)
-  })
-}
-
-Keeper.prototype._getAbsPathForKey = function (key) {
-  if (this._flat) {
-    return path.join(this._path, key)
-  } else {
-    // git style
-    return path.join(this._path, key.slice(0, 2), key.slice(2))
-  }
-}
-
-Keeper.prototype._getKeyForPath = function (filePath) {
-  var parts = filePath.split('/')
-  var file = parts.pop()
-  if (this._flat) return file
-
-  return parts.pop() + file
-}
-
-Keeper.prototype._save = function (key, val) {
-  var filePath = this._getAbsPathForKey(key)
-  var dir = path.dirname(filePath)
-  return Q.nfcall(mkdirp, dir)
+  this._closed = true
+  return Q.allSettled(getValues(this._pending))
     .then(function () {
-      return writeFile(filePath, val)
+      return Q.ninvoke(this._db, 'close')
     })
 }
 
-function getFilesRecursive (dir) {
-  var deferred = Q.defer()
-  var files = []
-  // Walker options
-  var walker = walk.walk(dir, {
-    followLinks: false
-  })
+Keeper.prototype._exists = function (key) {
+  return this.getOne(key)
+    .then(function () {
+      return true
+    })
+    .catch(function () {
+      return false
+    })
+}
 
-  walker.on('file', function (root, stat, next) {
-    // Add this file to the list of files
-    files.push(root + '/' + stat.name)
-    next()
-  })
-
-  walker.on('errors', function (root, nodeStatsArray, next) {
-    debug('failed to read file', nodeStatsArray)
-    next()
-  })
-
-  walker.on('end', function () {
-    deferred.resolve(files)
-  })
-
-  return deferred.promise
+Keeper.prototype._save = function (key, val) {
+  return Q.ninvoke(this._db, 'put', key, val)
 }
 
 function getInfoHash (val) {

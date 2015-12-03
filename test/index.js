@@ -6,42 +6,18 @@ var test = require('tape')
 var Q = require('q')
 var Keeper = require('../')
 var testDir = path.resolve('./tmp')
-
-rimraf.sync(testDir)
-
-test('flat vs github dir structure', function (t) {
-  var flat = new Keeper({
-    storage: testDir,
-    flat: true
-  })
-
-  var github = new Keeper({
-    storage: testDir,
-  })
-
-  var key = '64fe16cc8a0c61c06bc403e02f515ce5614a35f1'
-  var a = flat.put(new Buffer('1'))
-    .then(function () {
-      fs.exists(path.join(testDir, key), t.ok)
-    })
-
-  var b = github.put(new Buffer('1'))
-    .then(function () {
-      fs.exists(path.join(testDir, key.slice(0, 2), key.slice(2)), t.ok)
-    })
-
-  Q.all([a, b])
-    .done(function () {
-      rimraf.sync(testDir)
-      t.end()
-    })
-})
+var memdown = require('memdown')
+var levelup = require('levelup')
+var counter = 0
+var newDB = function () {
+  return levelup('tmp' + (counter++), { db: memdown })
+}
 
 test('test invalid keys', function (t) {
   t.plan(1)
 
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
   keeper.put('a', new Buffer('b'))
@@ -58,7 +34,7 @@ test('put same data twice', function (t) {
   t.plan(1)
 
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
   put()
@@ -72,7 +48,7 @@ test('put same data twice', function (t) {
 
 test('put, get', function (t) {
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
   var k = [
