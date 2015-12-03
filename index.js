@@ -1,12 +1,18 @@
 
 var typeforce = require('typeforce')
-var Q = require('q')
 var extend = require('xtend')
 var debug = require('debug')('offline-keeper')
 var utils = require('@tradle/utils')
 var bindAll = require('bindall')
-var collect = require('stream-collector')
-collect = Q.nfcall.bind(Q, collect)
+var collectStream = require('stream-collector')
+var collect = function (stream) {
+  return new Promise((resolve, reject) => {
+    collectStream(stream, (err, data) => {
+      if (err) reject(err)
+      else resolve(data)
+    })
+  })
+}
 
 module.exports = Keeper
 
@@ -37,23 +43,20 @@ Keeper.prototype.get = function (keys) {
 }
 
 Keeper.prototype.getOne = function (key) {
-  return Q.ninvoke(this._db, 'get', this._encodeKey(key))
+  return ninvoke(this._db, 'get', this._encodeKey(key))
 }
 
 Keeper.prototype.getMany = async function (keys) {
-  var vals = await Q.allSettled(keys.map(this.getOne, this))
+  var vals = await allSettled(keys.map(this.getOne))
   return pluckValue(vals)
 }
 
 Keeper.prototype._createReadStream = function (opts) {
-  return this._db.createReadStream(extend({
+  opts = opts || {}
+  return this._db.createReadStream({
     start: this._prefix,
     end: this._prefix + '\xff'
-  }, opts || {}))
-}
-
-Keeper.prototype.getAll = function () {
-  return collect(this._createReadStream())
+  , ...opts})
 }
 
 Keeper.prototype.getAllKeys = function () {
@@ -69,7 +72,7 @@ Keeper.prototype.getAllValues = function (files) {
 }
 
 Keeper.prototype.getAll = async function () {
-  var data = await Q.nfcall(collect, this._createReadStream())
+  var data = await collect(this._createReadStream())
   var map = {}
   data.forEach(({ key, value }) => map[key] = value)
   return map
@@ -81,7 +84,6 @@ Keeper.prototype.put = function (arr) {
 }
 
 Keeper.prototype.putOne = async function (options) {
-  var self = this
   if (typeof options === 'string') {
     options = {
       key: arguments[0],
@@ -97,12 +99,14 @@ Keeper.prototype.putOne = async function (options) {
   var key = this._encodeKey(options.key)
   var val = options.value
   await this._validate(key, val)
-  return this._doPut(key, val)
+  return await this._doPut(key, val)
 }
 
 Keeper.prototype.putMany = async function (arr) {
-  var vals = await Q.allSettled(arr.map(this.putOne, this))
-  return pluckValue(vals)
+  // kick things off
+  var promises = arr.map(this.putOne, this)
+  var maybes = await allSettled(promises)
+  return pluckValue(maybes)
 }
 
 Keeper.prototype._validate = async function (key, value) {
@@ -111,7 +115,7 @@ Keeper.prototype._validate = async function (key, value) {
     typeforce('Buffer', value)
   } catch (err) {
     debug('invalid options')
-    return Q.reject(err)
+    throw err
   }
 
   var infoHash = await getInfoHash(value)
@@ -130,28 +134,26 @@ Keeper.prototype._normalizeOptions = async function (options) {
   return { ...options, key }
 }
 
-Keeper.prototype._doPut = async function (key, value) {
-  var self = this
+Keeper.prototype._doPut = function (key, value) {
+  if (this._closed) return Promise.reject(new Error('Keeper is closed'))
 
-  if (this._closed) throw new Error('Keeper is closed')
-
-  if (this._done[key]) return key
+  if (this._done[key]) return Promise.resolve(key)
   if (this._pending[key]) return this._pending[key]
 
   return this._pending[key] = this._exists(key)
     .then(exists => {
-      if (!exists) return self._save(key, value)
+      if (!exists) return this._save(key, value)
     })
     .then(() => {
-      delete self._pending[key]
-      self._done[key] = true
+      delete this._pending[key]
+      this._done[key] = true
       debug('put finished', key)
       return key
     })
 }
 
 Keeper.prototype.removeOne = function (key) {
-  return Q.ninvoke(this._db, 'del', this._encodeKey(key))
+  return ninvoke(this._db, 'del', this._encodeKey(key))
 }
 
 Keeper.prototype.removeMany = function (keys) {
@@ -162,19 +164,20 @@ Keeper.prototype.removeMany = function (keys) {
     }
   }, this)
 
-  return Q.ninvoke(this._db, 'batch', batch)
+  return ninvoke(this._db, 'batch', batch)
 }
 
 Keeper.prototype.clear = async function () {
   var keys = await this.getAllKeys()
-  return this.removeMany(keys)
+  return await this.removeMany(keys)
 }
 
 Keeper.prototype.destroy =
 Keeper.prototype.close = async function () {
   this._closed = true
-  await Q.allSettled(getValues(this._pending))
-  return Q.ninvoke(this._db, 'close')
+  await allSettled(getValues(this._pending))
+  // return native promise
+  return await ninvoke(this._db, 'close')
 }
 
 Keeper.prototype._exists = async function (key) {
@@ -187,11 +190,11 @@ Keeper.prototype._exists = async function (key) {
 }
 
 Keeper.prototype._save = function (key, val) {
-  return Q.ninvoke(this._db, 'put', key, val)
+  return ninvoke(this._db, 'put', key, val)
 }
 
 function getInfoHash (val) {
-  return Q.ninvoke(utils, 'getInfoHash', val)
+  return ninvoke(utils, 'getInfoHash', val)
 }
 
 function pluckValue (results) {
@@ -203,3 +206,43 @@ function getValues (obj) {
   for (var p in obj) v.push(obj[p])
   return v
 }
+
+function ninvoke(obj, method, ...args) {
+  return new Promise((resolve, reject) => {
+    var callback = (err, ...results) => {
+      if (err) return reject(err)
+
+      if (results.length === 1) {
+        resolve(results[0])
+      } else {
+        resolve(results)
+      }
+    }
+
+    args.push(callback)
+    return obj[method].apply(obj, args)
+  })
+}
+
+async function allSettled (promises) {
+  var vals = []
+  var i = promises.length
+  while (i--) {
+    try {
+      var value = await promises[i]
+      vals.unshift({ value })
+    } catch (err) {
+      vals.unshift({ reason: err })
+    }
+  }
+
+  return vals
+}
+
+// function denodeify (obj, method, ...args) {
+//   return () => {
+//     return new Promise((resolve, reject) => {
+//       fn.
+//     })
+//   }
+// }
