@@ -1,78 +1,58 @@
 
 var path = require('path')
 var fs = require('fs')
-var rimraf = require('rimraf')
 var test = require('tape')
+var memdown = require('memdown')
+var levelup = require('levelup')
 var Q = require('q')
 var Keeper = require('../')
-var testDir = path.resolve('./tmp')
+var counter = 0
 
-rimraf.sync(testDir)
+function newDB () {
+  return levelup('blah' + (counter++), { db: memdown })
+}
 
-test('flat vs github dir structure', function (t) {
-  var flat = new Keeper({
-    storage: testDir,
-    flat: true
-  })
-
-  var github = new Keeper({
-    storage: testDir,
-  })
-
-  var key = '64fe16cc8a0c61c06bc403e02f515ce5614a35f1'
-  var a = flat.put(new Buffer('1'))
-    .then(function () {
-      fs.exists(path.join(testDir, key), t.ok)
-    })
-
-  var b = github.put(new Buffer('1'))
-    .then(function () {
-      fs.exists(path.join(testDir, key.slice(0, 2), key.slice(2)), t.ok)
-    })
-
-  Q.all([a, b])
-    .done(function () {
-      rimraf.sync(testDir)
-      t.end()
-    })
-})
-
-test('test invalid keys', function (t) {
+test('test invalid keys', async function (t) {
   t.plan(1)
 
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
-  keeper.put('a', new Buffer('b'))
-    .then(function () {
-      t.fail()
-    })
-    .catch(function (err) {
-      t.pass()
-    })
-    .done()
+  try {
+    await keeper.put('a', new Buffer('b'))
+    t.fail('invalid put succeeded')
+  } catch (err) {
+    t.pass()
+  }
+
+  await keeper.close()
+  t.end()
 })
 
-test('put same data twice', function (t) {
-  t.plan(1)
-
+test('put same data twice', async function (t) {
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
-  put()
-    .then(put)
-    .done(t.pass)
+  try {
+    await put()
+    await put()
+    await keeper.close()
+  } catch (err) {
+    t.fail(err)
+  }
+
+  t.end()
 
   function put () {
     return keeper.put('64fe16cc8a0c61c06bc403e02f515ce5614a35f1', new Buffer('1'))
   }
 })
 
-test('put, get', function (t) {
+test('put, get', async function (t) {
   var keeper = new Keeper({
-    storage: testDir
+    db: newDB()
   })
 
   var k = [
@@ -83,44 +63,24 @@ test('put, get', function (t) {
   ]
 
   var v = ['1', '2', '3'].map(Buffer)
-  keeper.putOne(k[0], v[0])
-    .then(function () {
-      return keeper.getOne(k[0])
-    })
-    .then(function (v0) {
-      t.deepEqual(v0, v[0])
-    })
-    .then(function () {
-      // keeper should derive key
-      return keeper.putMany(v.slice(1))
-    })
-    .then(function () {
-      return keeper.getMany(k)
-    })
-    .then(function (vals) {
-      t.deepEqual(vals, v)
-    })
-    .then(function () {
-      return keeper.getAllKeys()
-    })
-    .then(function (keys) {
-      t.deepEqual(keys.sort(), k.slice().sort())
-      return keeper.getAllValues()
-    })
-    .then(function (vals) {
-      t.deepEqual(vals.sort(), v.slice().sort())
-      return keeper.getAll()
-    })
-    .then(function (map) {
-      t.deepEqual(Object.keys(map).sort(), k.slice().sort())
-      var vals = Object.keys(map).map(function (key) {
-        return map[key]
-      })
+  await keeper.putOne(k[0], v[0])
+  var v0 = await keeper.getOne(k[0])
+  t.deepEqual(v0, v[0])
+  // keeper should derive key
+  await keeper.putMany(v.slice(1))
+  var vals = await keeper.getMany(k)
+  t.deepEqual(vals, v)
+  var keys = await keeper.getAllKeys()
+  t.deepEqual(keys.sort(), k.slice().sort())
+  vals = await keeper.getAllValues()
+  t.deepEqual(vals.sort(), v.slice().sort())
+  var map = await keeper.getAll()
+  t.deepEqual(Object.keys(map).sort(), k.slice().sort())
+  vals = Object.keys(map).map(function (key) {
+    return map[key]
+  })
 
-      t.deepEqual(vals.sort(), v.slice().sort())
-    })
-    .done(function () {
-      rimraf.sync(testDir)
-      t.end()
-    })
+  t.deepEqual(vals.sort(), v.slice().sort())
+  await keeper.close()
+  t.end()
 })
