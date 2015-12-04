@@ -4,7 +4,6 @@ var fs = require('fs')
 var test = require('tape')
 var memdown = require('memdown')
 var levelup = require('levelup')
-var Q = require('q')
 var Keeper = require('../')
 var counter = 0
 
