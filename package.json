@@ -1,6 +1,6 @@
 {
   "name": "@tradle/offline-keeper",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "offline implementation of tradle keeper",
   "main": "lib/index.js",
   "scripts": {
