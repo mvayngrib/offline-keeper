@@ -43,7 +43,11 @@ Keeper.prototype.get = function (keys) {
 }
 
 Keeper.prototype.getOne = function (key) {
-  return ninvoke(this._db, 'get', this._encodeKey(key))
+  return this._getOne(key)
+}
+
+Keeper.prototype._getOne = function (key) {
+  return Q.ninvoke(this._db, 'get', this._encodeKey(key))
 }
 
 Keeper.prototype.getMany = async function (keys) {
@@ -182,7 +186,7 @@ Keeper.prototype.close = async function () {
 
 Keeper.prototype._exists = async function (key) {
   try {
-    await this.getOne(key)
+    await this._getOne(key)
     return true
   } catch (err) {
     return false
