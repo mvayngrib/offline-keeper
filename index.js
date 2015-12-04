@@ -37,6 +37,10 @@ Keeper.prototype.get = function (keys) {
 }
 
 Keeper.prototype.getOne = function (key) {
+  return this._getOne(key)
+}
+
+Keeper.prototype._getOne = function (key) {
   return Q.ninvoke(this._db, 'get', this._encodeKey(key))
 }
 
@@ -202,7 +206,7 @@ Keeper.prototype.close = function () {
 }
 
 Keeper.prototype._exists = function (key) {
-  return this.getOne(key)
+  return this._getOne(key)
     .then(function () {
       return true
     })
