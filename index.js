@@ -198,10 +198,11 @@ Keeper.prototype.clear = function () {
 
 Keeper.prototype.destroy =
 Keeper.prototype.close = function () {
+  var self = this
   this._closed = true
   return Q.allSettled(getValues(this._pending))
     .then(function () {
-      return Q.ninvoke(this._db, 'close')
+      return Q.ninvoke(self._db, 'close')
     })
 }
 

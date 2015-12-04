@@ -27,6 +27,9 @@ test('test invalid keys', function (t) {
     .catch(function (err) {
       t.pass()
     })
+    .finally(function () {
+      return keeper.close()
+    })
     .done()
 })
 
