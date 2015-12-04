@@ -4,7 +4,7 @@ var fs = require('fs')
 var test = require('tape')
 var memdown = require('memdown')
 var levelup = require('levelup')
-var Keeper = require('../')
+var Keeper = require('../lib')
 var counter = 0
 
 function newDB () {
