@@ -1,10 +1,14 @@
 {
-  "presets": [
-    "es2015"
-  ],
-  "plugins": [
-    "transform-async-functions",
-    "transform-object-rest-spread",
-    "transform-regenerator"
+  "whitelist": [
+    "es6.modules",
+    "es6.arrowFunctions",
+    "es6.destructuring",
+    "es6.spread",
+    "es6.parameters",
+    "es7.classProperties",
+    "es7.decorators",
+    "es7.asyncFunctions",
+    "es7.objectRestSpread",
+    "regenerator"
   ]
 }

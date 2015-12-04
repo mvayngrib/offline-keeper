@@ -1,6 +1,6 @@
+'use strict'
 
 var typeforce = require('typeforce')
-var extend = require('xtend')
 var debug = require('debug')('offline-keeper')
 var utils = require('@tradle/utils')
 var bindAll = require('bindall')
