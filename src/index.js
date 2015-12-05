@@ -47,7 +47,7 @@ Keeper.prototype.getOne = function (key) {
 }
 
 Keeper.prototype._getOne = function (key) {
-  return Q.ninvoke(this._db, 'get', this._encodeKey(key))
+  return ninvoke(this._db, 'get', this._encodeKey(key))
 }
 
 Keeper.prototype.getMany = async function (keys) {
