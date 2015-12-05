@@ -8,21 +8,71 @@ var Keeper = require('../lib')
 var counter = 0
 
 function newDB () {
-  return levelup('blah' + (counter++), { db: memdown })
+  return levelup('blah' + (counter++), {
+    db: memdown,
+    valueEncoding: 'binary'
+  })
 }
 
-test('test invalid keys', async function (t) {
+test('test invalid keys/values', async function (t) {
+  var keeper = new Keeper({
+    db: newDB()
+  })
+
+  var badInputs = [
+    {
+      key: 'a',
+      value: new Buffer('b')
+    },
+    {
+      value: 'b'
+    },
+    {
+      value: { blah: 1}
+    }
+  ]
+
+  badInputs.forEach(async (input) => {
+    try {
+      await keeper.put('a', new Buffer('b'))
+      t.fail('invalid put succeeded')
+    } catch (err) {
+      t.pass('bad input rejected')
+    }
+  })
+
+  await keeper.close()
+  t.end()
+})
+
+test('invalid db input', function (t) {
+  try {
+    var keeper = new Keeper({
+      db: levelup('blah', { db: memdown })
+    })
+
+    t.fail('invalid db input succeeded')
+  } catch (err) {
+    t.pass()
+  }
+
+  t.end()
+})
+
+test('test gibberish values', async function (t) {
   t.plan(1)
 
   var keeper = new Keeper({
     db: newDB()
   })
 
+  var gibberish = new Buffer('28311c3df8e04f45b57d10d7ff3dbff596f6bba8a47ab3bb5ad0dd5def4c84', 'hex')
   try {
-    await keeper.put('a', new Buffer('b'))
-    t.fail('invalid put succeeded')
+    var key = await keeper.put(gibberish)
+    var storedGibberish = await keeper.getOne(key)
+    t.deepEqual(storedGibberish, gibberish)
   } catch (err) {
-    t.pass()
+    t.fail()
   }
 
   await keeper.close()

@@ -21,6 +21,10 @@ function Keeper (options) {
     db: 'Object'
   }, options)
 
+  if (options.db.options.valueEncoding !== 'binary') {
+    throw new Error('db encoding must be binary')
+  }
+
   this._db = options.db
   this._pending = {}
   this._done = {}
