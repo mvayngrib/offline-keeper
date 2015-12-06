@@ -10,7 +10,7 @@ var memdown = require('memdown')
 var levelup = require('levelup')
 var counter = 0
 var newDB = function () {
-  return levelup('tmp' + (counter++), { db: memdown })
+  return levelup('tmp' + (counter++), { db: memdown, valueEncoding: 'binary' })
 }
 
 test('test invalid keys', function (t) {
