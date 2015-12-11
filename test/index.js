@@ -13,6 +13,16 @@ var newDB = function () {
   return levelup('tmp' + (counter++), { db: memdown, valueEncoding: 'binary' })
 }
 
+test('invalid db encoding', function (t) {
+  t.throws(function () {
+    var keeper = new Keeper({
+      db: levelup('tmp' + (counter++), { db: memdown })
+    })
+  })
+
+  t.end()
+})
+
 test('test invalid keys', function (t) {
   t.plan(1)
 
