@@ -1,15 +1,15 @@
 {
   "name": "@tradle/offline-keeper",
   "version": "3.0.0",
-  "description": "",
+  "description": "offline storage node",
   "main": "index.js",
   "scripts": {
     "test": "node test"
   },
   "author": "Mark Vayngrib <mark.vayngrib@lablz.com> (http://github.com/mvayngrib)",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
-    "@tradle/bitkeeper-client": "^0.0.1",
+    "@tradle/bitkeeper-client": "^0.0.2",
     "@tradle/utils": "^0.2.3",
     "bindall": "^1.0.0",
     "debug": "^2.2.0",
@@ -23,5 +23,16 @@
     "memdown": "^1.1.0",
     "rimraf": "^2.4.3",
     "tape": "^4.2.0"
-  }
+  },
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tradle/offline-keeper"
+  },
+  "bugs": {
+    "url": "https://github.com/tradle/offline-keeper/issues"
+  },
+  "homepage": "https://github.com/tradle/offline-keeper"
 }
