@@ -10,7 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "@tradle/bitkeeper-client": "^0.0.2",
-    "@tradle/utils": "^0.2.3",
+    "@tradle/utils": "^1.0.0",
     "bindall": "^1.0.0",
     "debug": "^2.2.0",
     "q": "^1.4.1",
