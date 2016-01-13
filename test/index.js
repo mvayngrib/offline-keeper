@@ -13,6 +13,29 @@ var newDB = function () {
   return levelup('tmp' + (counter++), { db: memdown, valueEncoding: 'binary' })
 }
 
+test('put after delete writes to storage', function (t) {
+  var keeper = new Keeper({
+    db: newDB()
+  })
+
+  var key = '64fe16cc8a0c61c06bc403e02f515ce5614a35f1'
+  var val = new Buffer('1')
+  keeper.putOne(key, val)
+    .then(function () {
+      return keeper.removeOne(key)
+    })
+    .then(function () {
+      return keeper.putOne(key, val)
+    })
+    .then(function () {
+      return keeper.getOne(key)
+    })
+    .done(function (v) {
+      t.deepEqual(v, val)
+      t.end()
+    })
+})
+
 test('invalid db encoding', function (t) {
   t.throws(function () {
     var keeper = new Keeper({
