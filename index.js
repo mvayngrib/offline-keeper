@@ -180,16 +180,25 @@ Keeper.prototype._doPut = function (key, value) {
     })
 }
 
+Keeper.prototype._clearCached = function (key) {
+  delete this._done[key]
+  delete this._pending[key]
+}
+
 Keeper.prototype.removeOne = function (key) {
+  this._clearCached(key)
   return Q.ninvoke(this._db, 'del', this._encodeKey(key))
 }
 
 Keeper.prototype.removeMany = function (keys) {
-  var batch = keys.map(function (key) {
-    return {
+  var batch = []
+  keys.forEach(function (key) {
+    batch.push({
       type: 'del',
       key: this._encodeKey(key)
-    }
+    })
+
+    this._clearCached(key)
   }, this)
 
   return Q.ninvoke(this._db, 'batch', batch)
