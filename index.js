@@ -186,8 +186,7 @@ Keeper.prototype._clearCached = function (key) {
 }
 
 Keeper.prototype.removeOne = function (key) {
-  this._clearCached(key)
-  return Q.ninvoke(this._db, 'del', this._encodeKey(key))
+  return this.removeMany([key])
 }
 
 Keeper.prototype.removeMany = function (keys) {
