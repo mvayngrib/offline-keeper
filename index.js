@@ -168,7 +168,7 @@ Keeper.prototype._doPut = function (arr) {
     if (cached) {
       promises.push(cached) // cached === true, or a Promise
     } else {
-      // batch() defaults to `put`
+      pair.type = 'put'
       batch.push(pair)
     }
   })
