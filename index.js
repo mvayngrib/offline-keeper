@@ -94,34 +94,36 @@ Keeper.prototype.put = function (arr) {
 }
 
 Keeper.prototype.putOne = function (options) {
-  var self = this
-  if (typeof options === 'string') {
-    options = {
-      key: arguments[0],
-      value: arguments[1]
-    }
-  } else if (Buffer.isBuffer(options)) {
-    options = {
-      value: arguments[0]
-    }
-  }
-
-  var key
-  var val
-  return this._normalizeOptions(options)
-    .then(function (norm) {
-      key = self._encodeKey(norm.key)
-      val = norm.value
-      return self._validate(key, val)
-    })
-    .then(function () {
-      return self._doPut(key, val)
-    })
+  return this.putMany([normalizePutArgs.apply(null, arguments)])
 }
 
-Keeper.prototype.putMany = function (arr) {
-  return Q.allSettled(arr.map(this.putOne, this))
-    .then(pluckValue)
+Keeper.prototype.putMany = function (kvArr) {
+  var self = this
+
+  kvArr = kvArr.map(function () {
+    return normalizePutArgs.apply(null, arguments)
+  })
+
+  kvArr.forEach(function (pair) {
+    typeforce({
+      key: '?String',
+      value: 'Buffer'
+    }, pair)
+  })
+
+  return Q.all(kvArr.map(this._normalizeOptions))
+    .then(function (results) {
+      return Q.all(results.map(function (options, i) {
+        options.key = self._encodeKey(options.key)
+        return self._validate(options.key, options.value)
+      }))
+    })
+    .then(function () {
+      return self._doPut(kvArr)
+    })
+    .then(function () {
+      return pluckValue(kvArr)
+    })
 }
 
 Keeper.prototype._validate = function (key, value) {
@@ -154,29 +156,32 @@ Keeper.prototype._normalizeOptions = function (options) {
     })
 }
 
-Keeper.prototype._doPut = function (key, value) {
+Keeper.prototype._doPut = function (arr) {
   var self = this
 
   if (this._closed) return Q.reject(new Error('Keeper is closed'))
 
-  if (this._done[key]) return Q(key)
-  if (this._pending[key]) return this._pending[key]
+  var promises = []
+  var batch = []
+  arr.forEach(function (pair) {
+    var cached = self._done[pair.key] || self._pending[pair.key]
+    if (cached) {
+      promises.push(cached) // cached === true, or a Promise
+    } else {
+      // batch() defaults to `put`
+      batch.push(pair)
+    }
+  })
 
-  return this._pending[key] = this._exists(key)
-    .then(function (exists) {
-      if (exists) {
-        debug('put aborted, value exists', key)
-        return true
-        // throw new Error('value for this key already exists in Keeper')
-      }
-
-      return self._save(key, value)
-    })
+  return Q.all([
+      promises,
+      this._save(batch)
+    ])
     .finally(function () {
-      delete self._pending[key]
-      self._done[key] = true
-      debug('put finished', key)
-      return key
+      batch.forEach(function (pair) {
+        delete self._pending[pair.key]
+        self._done[pair.key] = true
+      })
     })
 }
 
@@ -228,8 +233,8 @@ Keeper.prototype._exists = function (key) {
     })
 }
 
-Keeper.prototype._save = function (key, val) {
-  return Q.ninvoke(this._db, 'put', key, val)
+Keeper.prototype._save = function (batch) {
+  return Q.ninvoke(this._db, 'batch', batch)
 }
 
 function getInfoHash (val) {
@@ -246,4 +251,21 @@ function getValues (obj) {
   var v = []
   for (var p in obj) v.push(obj[p])
   return v
+}
+
+function normalizePutArgs (key, value) {
+  if (typeof key === 'string') {
+    return {
+      key: key,
+      value: value
+    }
+  } else if (Buffer.isBuffer(key)) {
+    return {
+      value: key
+    }
+  } else if ('key' in key && 'value' in key) {
+    return key
+  }
+
+  throw new Error('invalid arguments')
 }
