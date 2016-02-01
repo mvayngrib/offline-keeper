@@ -20,20 +20,29 @@ test('put after delete writes to storage', function (t) {
 
   var key = '64fe16cc8a0c61c06bc403e02f515ce5614a35f1'
   var val = new Buffer('1')
-  keeper.putOne(key, val)
-    .then(function () {
-      return keeper.removeOne(key)
+  var pair = {
+    key: key,
+    value: val
+  }
+
+  keeper.putOne(pair, function (err, result) {
+    if (err) throw err
+
+    keeper.removeOne(key, function (err) {
+      if (err) throw err
+
+      keeper.putOne(pair, function (err) {
+        if (err) throw err
+
+        keeper.getOne(key, function (err, v) {
+          if (err) throw err
+
+          t.deepEqual(v, val)
+          t.end()
+        })
+      })
     })
-    .then(function () {
-      return keeper.putOne(key, val)
-    })
-    .then(function () {
-      return keeper.getOne(key)
-    })
-    .done(function (v) {
-      t.deepEqual(v, val)
-      t.end()
-    })
+  })
 })
 
 test('invalid db encoding', function (t) {
@@ -53,17 +62,13 @@ test('test invalid keys', function (t) {
     db: newDB()
   })
 
-  keeper.put('a', new Buffer('b'))
-    .then(function () {
-      t.fail()
-    })
-    .catch(function (err) {
-      t.pass()
-    })
-    .finally(function () {
-      return keeper.close()
-    })
-    .done()
+  keeper.put({
+    key: 'a',
+    value: new Buffer('b')
+  }, function (err) {
+    t.ok(err)
+    keeper.close(t.end)
+  })
 })
 
 test('put same data twice', function (t) {
@@ -73,12 +78,21 @@ test('put same data twice', function (t) {
     db: newDB()
   })
 
-  put()
-    .then(put)
-    .done(t.pass)
+  put(function (err) {
+    if (err) throw err
 
-  function put () {
-    return keeper.put('64fe16cc8a0c61c06bc403e02f515ce5614a35f1', new Buffer('1'))
+    put(function (err) {
+      if (err) throw err
+
+      t.pass()
+    })
+  })
+
+  function put (cb) {
+    return keeper.put({
+      key: '64fe16cc8a0c61c06bc403e02f515ce5614a35f1',
+      value: new Buffer('1')
+    }, cb)
   }
 })
 
@@ -95,44 +109,50 @@ test('put, get', function (t) {
   ]
 
   var v = ['1', '2', '3'].map(Buffer)
-  keeper.putOne(k[0], v[0])
-    .then(function () {
-      return keeper.getOne(k[0])
-    })
-    .then(function (v0) {
-      t.deepEqual(v0, v[0])
-    })
-    .then(function () {
-      // keeper should derive key
-      return keeper.putMany(v.slice(1))
-    })
-    .then(function () {
-      return keeper.getMany(k)
-    })
-    .then(function (vals) {
-      t.deepEqual(vals, v)
-    })
-    .then(function () {
-      return keeper.getAllKeys()
-    })
-    .then(function (keys) {
-      t.deepEqual(keys.sort(), k.slice().sort())
-      return keeper.getAllValues()
-    })
-    .then(function (vals) {
-      t.deepEqual(vals.sort(), v.slice().sort())
-      return keeper.getAll()
-    })
-    .then(function (map) {
-      t.deepEqual(Object.keys(map).sort(), k.slice().sort())
-      var vals = Object.keys(map).map(function (key) {
-        return map[key]
-      })
+  keeper.putOne({
+    key: k[0],
+    value: v[0]
+  }, function (err) {
+    if (err) throw err
 
-      t.deepEqual(vals.sort(), v.slice().sort())
+    keeper.getOne(k[0], function (err, v0) {
+      if (err) throw err
+
+      t.deepEqual(v0, v[0])
+      // keeper should derive key
+      return keeper.putMany(v.slice(1).map(function (v) {
+        return { value: v }
+      }), function (err) {
+        if (err) throw err
+
+        return keeper.getMany(k, function (err, vals) {
+          if (err) throw err
+
+          t.deepEqual(vals, v)
+          keeper.getAllKeys(function (err, keys) {
+            if (err) throw err
+
+            t.deepEqual(keys.sort(), k.slice().sort())
+            keeper.getAllValues(function (err, vals) {
+              if (err) throw err
+
+              t.deepEqual(vals.sort(), v.slice().sort())
+              keeper.getAll(function (err, map) {
+                if (err) throw err
+
+                t.deepEqual(Object.keys(map).sort(), k.slice().sort())
+                var vals = Object.keys(map).map(function (key) {
+                  return map[key]
+                })
+
+                t.deepEqual(vals.sort(), v.slice().sort())
+                rimraf.sync(testDir)
+                t.end()
+              })
+            })
+          })
+        })
+      })
     })
-    .done(function () {
-      rimraf.sync(testDir)
-      t.end()
-    })
+  })
 })

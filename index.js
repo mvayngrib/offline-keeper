@@ -1,12 +1,10 @@
 
 var typeforce = require('typeforce')
-var Q = require('q')
 var extend = require('xtend')
 var debug = require('debug')('offline-keeper')
 var utils = require('@tradle/utils')
 var bindAll = require('bindall')
 var collect = require('stream-collector')
-collect = Q.nfcall.bind(Q, collect)
 
 module.exports = Keeper
 
@@ -40,17 +38,27 @@ Keeper.prototype.get = function (keys) {
   else return this.getOne(keys)
 }
 
-Keeper.prototype.getOne = function (key) {
-  return this._getOne(key)
+Keeper.prototype.getOne = function (key, cb) {
+  return this._getOne(key, cb)
 }
 
-Keeper.prototype._getOne = function (key) {
-  return Q.ninvoke(this._db, 'get', this._encodeKey(key))
+Keeper.prototype._getOne = function (key, cb) {
+  return this._db.get(this._encodeKey(key), cb)
 }
 
-Keeper.prototype.getMany = function (keys) {
-  return Q.allSettled(keys.map(this.getOne, this))
-    .then(pluckValue)
+Keeper.prototype.getMany = function (keys, cb) {
+  var self = this
+  var togo = keys.length
+  var values = []
+  keys.forEach(function (key, i) {
+    values.push(null)
+    self.getOne(key, function (err, value) {
+      if (!err) values[i] = value
+      if (--togo === 0) {
+        cb(null, values)
+      }
+    })
+  })
 }
 
 Keeper.prototype._createReadStream = function (opts) {
@@ -60,129 +68,125 @@ Keeper.prototype._createReadStream = function (opts) {
   }, opts || {}))
 }
 
-Keeper.prototype.getAll = function () {
-  return collect(this._createReadStream())
+Keeper.prototype.getAll = function (cb) {
+  return collect(this._createReadStream(), cb)
 }
 
-Keeper.prototype.getAllKeys = function () {
+Keeper.prototype.getAllKeys = function (cb) {
   return collect(this._createReadStream({
     values: false
-  }))
+  }), cb)
 }
 
-Keeper.prototype.getAllValues = function (files) {
+Keeper.prototype.getAllValues = function (cb) {
   return collect(this._createReadStream({
     keys: false
-  }))
+  }), cb)
 }
 
-Keeper.prototype.getAll = function () {
-  return Q.nfcall(collect, this._createReadStream())
-    .then(function (data) {
-      var map = {}
-      data.forEach(function (item) {
-        map[item.key] = item.value
-      })
+Keeper.prototype.getAll = function (cb) {
+  collect(this._createReadStream(), function (err, data) {
+    if (err) return cb(err)
 
-      return map
+    var map = {}
+    data.forEach(function (item) {
+      map[item.key] = item.value
     })
+
+    cb(null, map)
+  })
 }
 
-Keeper.prototype.put = function (arr) {
-  if (Array.isArray(arr)) return this.putMany(arr)
-  else return this.putOne.apply(this, arguments)
+Keeper.prototype.put = function (arr, cb) {
+  return this.putMany([].concat(arr), cb)
 }
 
-Keeper.prototype.putOne = function (options) {
-  return this.putMany([normalizePutArgs.apply(null, arguments)])
+Keeper.prototype.putOne = function (options, cb) {
+  return this.putMany([options], cb)
 }
 
-Keeper.prototype.putMany = function (kvArr) {
+Keeper.prototype.putMany = function (pairs, cb) {
   var self = this
+  var error
 
-  kvArr = kvArr.map(function () {
-    return normalizePutArgs.apply(null, arguments)
+  var togo = pairs.length
+  var normalized = []
+  pairs.forEach(function (pair, i) {
+    normalized.push(null)
+    self._normalizeOptions(pair, function (err, norm) {
+      if (failedOut(err)) return
+
+      norm.key = self._encodeKey(norm.key)
+      normalized[i] = norm
+      self._validate(norm.key, norm.value, function (err) {
+        if (failedOut(err)) return
+        if (--togo) return
+
+        self._doPut(normalized, function (err) {
+          if (err) return cb(err)
+
+          cb(null, pluckValue(normalized))
+        })
+      })
+    })
   })
 
-  kvArr.forEach(function (pair) {
-    typeforce({
-      key: '?String',
-      value: 'Buffer'
-    }, pair)
-  })
-
-  return Q.all(kvArr.map(this._normalizeOptions))
-    .then(function (results) {
-      return Q.all(results.map(function (options, i) {
-        options.key = self._encodeKey(options.key)
-        return self._validate(options.key, options.value)
-      }))
-    })
-    .then(function () {
-      return self._doPut(kvArr)
-    })
-    .then(function () {
-      return pluckValue(kvArr)
-    })
+  function failedOut (err) {
+    if (error) return true
+    if (err) {
+      error = err
+      cb(err)
+      return true
+    }
+  }
 }
 
-Keeper.prototype._validate = function (key, value) {
+Keeper.prototype._validate = function (key, value, cb) {
   try {
     typeforce('String', key)
     typeforce('Buffer', value)
   } catch (err) {
     debug('invalid options')
-    return Q.reject(err)
+    return cb(err)
   }
 
-  return getInfoHash(value)
-    .then(function (infoHash) {
-      if (key !== infoHash) {
-        debug('invalid key')
-        throw new Error('Key must be the infohash of the value, in this case: ' + infoHash)
-      }
-    })
-}
-
-Keeper.prototype._normalizeOptions = function (options) {
-  var getKey = options.key == null ?
-    getInfoHash(options.value) :
-    Q.resolve(options.key)
-
-  return getKey
-    .then(function (key) {
-      options.key = key
-      return options
-    })
-}
-
-Keeper.prototype._doPut = function (arr) {
-  var self = this
-
-  if (this._closed) return Q.reject(new Error('Keeper is closed'))
-
-  var promises = []
-  var batch = []
-  arr.forEach(function (pair) {
-    var cached = self._done[pair.key] || self._pending[pair.key]
-    if (cached) {
-      promises.push(cached) // cached === true, or a Promise
-    } else {
-      pair.type = 'put'
-      batch.push(pair)
+  return utils.getInfoHash(value, function (err, infoHash) {
+    if (err) return cb(err)
+    if (key !== infoHash) {
+      debug('invalid key')
+      return cb(new Error('Key must be the infohash of the value, in this case: ' + infoHash))
     }
+
+    cb()
+  })
+}
+
+Keeper.prototype._normalizeOptions = function (options, cb) {
+  var norm = extend(options)
+  getKey(function (err, key) {
+    if (err) return cb(err)
+
+    norm.key = key
+    cb(null, norm)
   })
 
-  return Q.all([
-      promises,
-      this._save(batch)
-    ])
-    .finally(function () {
-      batch.forEach(function (pair) {
-        delete self._pending[pair.key]
-        self._done[pair.key] = true
-      })
-    })
+  function getKey (cb) {
+    if (norm.key) return cb(null, norm.key)
+
+    utils.getInfoHash(norm.value, cb)
+  }
+}
+
+Keeper.prototype._doPut = function (arr, cb) {
+  var self = this
+
+  if (this._closed) return cb(new Error('Keeper is closed'))
+
+  arr.forEach(function (item) {
+    item.type = 'put'
+  })
+
+  this._db.batch(arr, cb)
 }
 
 Keeper.prototype._clearCached = function (key) {
@@ -190,11 +194,11 @@ Keeper.prototype._clearCached = function (key) {
   delete this._pending[key]
 }
 
-Keeper.prototype.removeOne = function (key) {
-  return this.removeMany([key])
+Keeper.prototype.removeOne = function (key, cb) {
+  return this.removeMany([key], cb)
 }
 
-Keeper.prototype.removeMany = function (keys) {
+Keeper.prototype.removeMany = function (keys, cb) {
   var batch = []
   keys.forEach(function (key) {
     batch.push({
@@ -205,40 +209,37 @@ Keeper.prototype.removeMany = function (keys) {
     this._clearCached(key)
   }, this)
 
-  return Q.ninvoke(this._db, 'batch', batch)
+  this._db.batch(batch, cb)
 }
 
-Keeper.prototype.clear = function () {
-  return this.getAllKeys()
-    .then(this.removeMany)
+Keeper.prototype.clear = function (cb) {
+  var self = this
+  this.getAllKeys(function (err, keys) {
+    if (err) return cb(err)
+
+    self.removeMany(keys, cb)
+  })
 }
 
 Keeper.prototype.destroy =
-Keeper.prototype.close = function () {
+Keeper.prototype.close = function (cb) {
   var self = this
   this._closed = true
-  return Q.allSettled(getValues(this._pending))
-    .then(function () {
-      return Q.ninvoke(self._db, 'close')
-    })
+  if (!Object.keys(this._pending).length) {
+    this._doClose(cb)
+  } else {
+    this._closeCB = cb
+  }
 }
 
-Keeper.prototype._exists = function (key) {
-  return this._getOne(key)
-    .then(function () {
-      return true
-    })
-    .catch(function () {
-      return false
-    })
+Keeper.prototype._doClose = function (cb) {
+  this._db.close(cb)
 }
 
-Keeper.prototype._save = function (batch) {
-  return Q.ninvoke(this._db, 'batch', batch)
-}
-
-function getInfoHash (val) {
-  return Q.ninvoke(utils, 'getInfoHash', val)
+Keeper.prototype._exists = function (key, cb) {
+  this._getOne(key, function (err) {
+    cb(!err)
+  })
 }
 
 function pluckValue (results) {
@@ -253,19 +254,6 @@ function getValues (obj) {
   return v
 }
 
-function normalizePutArgs (key, value) {
-  if (typeof key === 'string') {
-    return {
-      key: key,
-      value: value
-    }
-  } else if (Buffer.isBuffer(key)) {
-    return {
-      value: key
-    }
-  } else if ('key' in key && 'value' in key) {
-    return key
-  }
-
-  throw new Error('invalid arguments')
+function call (fn) {
+  fn()
 }
